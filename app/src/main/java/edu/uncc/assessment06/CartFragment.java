@@ -14,7 +14,9 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Toast;
 
+import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.DocumentReference;
@@ -22,10 +24,12 @@ import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.EventListener;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.FirebaseFirestoreException;
+import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
 import com.google.firebase.firestore.QuerySnapshot;
 import com.squareup.picasso.Picasso;
 
+import org.checkerframework.checker.units.qual.C;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -58,7 +62,8 @@ public class CartFragment extends Fragment {
     }
 
     FragmentCartBinding binding;
-    ArrayList<Product> products = new ArrayList<>();
+    ArrayList<CartItem> mCartItems = new ArrayList<>();
+    ListenerRegistration listenerRegistration = null;
     CartAdapter adapter;
 
     @Override
@@ -72,14 +77,14 @@ public class CartFragment extends Fragment {
         super.onViewCreated(view, savedInstanceState);
         getActivity().setTitle("My Cart");
 
-        adapter = new CartAdapter();
         binding.recyclerView.setLayoutManager(new LinearLayoutManager(getActivity()));
+        adapter = new CartAdapter();
         binding.recyclerView.setAdapter(adapter);
 
         FirebaseFirestore db = FirebaseFirestore.getInstance();
         FirebaseUser userID = FirebaseAuth.getInstance().getCurrentUser();
 
-        db.collection("cart")
+        listenerRegistration = db.collection("carts")
                 .whereEqualTo("uuid", FirebaseAuth.getInstance().getCurrentUser().getUid())
                 .addSnapshotListener(new EventListener<QuerySnapshot>() {
 
@@ -89,10 +94,10 @@ public class CartFragment extends Fragment {
                         if(error != null){
                             Toast.makeText(getActivity(), error.getMessage(), Toast.LENGTH_SHORT).show();
                         } else {
-                            products.clear();
+                            mCartItems.clear();
                             for (QueryDocumentSnapshot doc : value) {
-                                Product product = doc.toObject(Product.class);
-                                products.add(product);
+                                CartItem item = doc.toObject(CartItem.class);
+                                mCartItems.add(item);
                             }
                             adapter.notifyDataSetChanged();
                             calculateTotal();
@@ -101,66 +106,69 @@ public class CartFragment extends Fragment {
                 });
     }
 
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        if(listenerRegistration != null) {
+            listenerRegistration.remove();
+        }
+    }
+
     private void calculateTotal() {
         double total = 0.0;
-        for (int i = 0; i < products.size(); i++) {
-            String price = products.get(i).getPrice();
-            double priceValue = Double.parseDouble(price);
-            total += priceValue;
+        for (CartItem item: mCartItems) {
+            total = total + item.getPrice();
         }
-        binding.textViewTotal.setText("Total : $" + total);
-        System.out.println("Item total is" + total);
+
+        binding.textViewTotal.setText("Total: $" + String.valueOf(total));
     }
-    class CartAdapter extends RecyclerView.Adapter<CartFragment.CartAdapter.CartViewHolder>{
 
-
+    class CartAdapter extends RecyclerView.Adapter<CartAdapter.CartViewHolder> {
         @NonNull
         @Override
-        public CartFragment.CartAdapter.CartViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            return new CartFragment.CartAdapter.CartViewHolder(CartRowItemBinding.inflate(getLayoutInflater(), parent, false));
+        public CartViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            CartRowItemBinding itemBinding = CartRowItemBinding.inflate(getLayoutInflater(), parent, false);
+            return new CartViewHolder(itemBinding);
         }
 
-
         @Override
-        public void onBindViewHolder(@NonNull CartFragment.CartAdapter.CartViewHolder holder, int position) {
-            Product product = products.get(position);
-            holder.setupUI(product);
+        public void onBindViewHolder(@NonNull CartViewHolder holder, int position) {
+            CartItem cartItem = mCartItems.get(position);
+            holder.setupUI(cartItem);
         }
 
         @Override
         public int getItemCount() {
-            return products.size();
+            return mCartItems.size();
         }
 
         class CartViewHolder extends RecyclerView.ViewHolder{
             CartRowItemBinding mBinding;
-            Product mProduct;
-            public CartViewHolder(CartRowItemBinding rowItemBinding) {
-                super(rowItemBinding.getRoot());
-                mBinding = rowItemBinding;
+            CartItem mCartItem;
+            public CartViewHolder(@NonNull CartRowItemBinding itemBinding) {
+                super(itemBinding.getRoot());
+                this.mBinding = itemBinding;
             }
 
-            void setupUI(Product product){
-                this.mProduct = product;
-                System.out.println("Product is, " + product);
-                mBinding.textViewProductName.setText(product.getName());
-                mBinding.textViewProductPrice.setText("$" + product.getPrice());
-                Picasso.get().load(product.getImg_url()).into(mBinding.imageViewProductIcon);
+            void setupUI(CartItem cartItem) {
+                this.mCartItem = cartItem;
+                mBinding.textViewProductName.setText(mCartItem.getName());
+                mBinding.textViewProductPrice.setText("$" + mCartItem.getPrice());
+                Picasso.get().load(mCartItem.getIcon_url()).into(mBinding.imageViewProductIcon);
 
                 mBinding.imageViewDeleteFromCart.setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
-                        String docID = product.getDocId();
-                        System.out.println("Clicked on document ID" + docID);
                         FirebaseFirestore db = FirebaseFirestore.getInstance();
-                        db.collection("cart").document(docID).delete().addOnSuccessListener(new OnSuccessListener<Void>() {
+                        db.collection("carts").document(mCartItem.getDocId()).delete().addOnCompleteListener(new OnCompleteListener<Void>() {
                             @Override
-                            public void onSuccess(Void unused) {
-                                adapter.notifyDataSetChanged();
+                            public void onComplete(@NonNull Task<Void> task) {
+
                             }
                         });
                     }
                 });
+
             }
         }
     }

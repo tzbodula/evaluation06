@@ -58,6 +58,7 @@ public class MainActivity extends AppCompatActivity implements LoginFragment.Log
     public void checkCart() {
         getSupportFragmentManager().beginTransaction()
                 .replace(R.id.rootView, new CartFragment())
+                .addToBackStack(null)
                 .commit();
     }
 }

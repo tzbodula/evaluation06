@@ -13,7 +13,9 @@ import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.DocumentReference;
@@ -70,9 +72,21 @@ public class ProductsFragment extends Fragment {
         });
         binding.recyclerView.setLayoutManager(new LinearLayoutManager(getActivity()));
         binding.recyclerView.setAdapter(adapter);
-
-
         getProducts();
+
+        binding.buttonGoToCart.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                mListener.checkCart();
+            }
+        });
+
+        binding.buttonLogout.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                mListener.logout();
+            }
+        });
     }
 
     OkHttpClient client = new OkHttpClient();
@@ -149,43 +163,43 @@ public class ProductsFragment extends Fragment {
 
             void setupUI(Product product){
                 this.mProduct = product;
+                mBinding.textViewProductName.setText(product.getName());
+                mBinding.textViewProductPrice.setText("$" + product.getPrice());
+                Picasso.get().load(product.getImg_url()).into(mBinding.imageViewProductIcon);
                 mBinding.imageViewAddToCart.setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
 
-                        HashMap<String, Object> selectedProduct = new HashMap<>();
-                        FirebaseUser userID = FirebaseAuth.getInstance().getCurrentUser();
-                        String uid = userID.getUid();
                         FirebaseFirestore db = FirebaseFirestore.getInstance();
-                        FirebaseAuth mAuth = FirebaseAuth.getInstance();
-                        DocumentReference docRef = db.collection(mAuth.getCurrentUser().getUid()).document();
-                        selectedProduct.put("uuid", uid);
-                        selectedProduct.put("description", product.getDescription());
-                        selectedProduct.put("img_url", product.getImg_url());
-                        selectedProduct.put("name", product.getName());
-                        selectedProduct.put("pid", product.getPid());
-                        selectedProduct.put("price", product.getPrice());
-                        selectedProduct.put("review_count", product.getReview_count());
-                        selectedProduct.put("docId", docRef.getId());
+                        DocumentReference docRef = db.collection("carts").document();
+                        HashMap<String, Object> data = new HashMap<>();
+                        data.put("icon_url", mProduct.getImg_url());
+                        data.put("name", mProduct.getName());
+                        try {
+                            data.put("price", Double.valueOf(mProduct.getPrice()));
+                        } catch (NumberFormatException ex) {
+                            data.put("price", 0.0);
+                        }
 
-                        System.out.println("Document reference is " + docRef.getId());
-                        db.collection("cart")
-                                .add(selectedProduct)
-                                .addOnSuccessListener(new OnSuccessListener<DocumentReference>() {
-                                    @Override
-                                    public void onSuccess(DocumentReference documentReference) {
+                        data.put("uid", FirebaseAuth.getInstance().getCurrentUser().getUid());
 
-                                        System.out.println("Succesfully added product!");
-                                    }
-                                });
+                        data.put("docId", docRef.getId());
 
+                        docRef.set(data).addOnCompleteListener(new OnCompleteListener<Void>() {
+                            @Override
+                            public void onComplete(@NonNull Task<Void> task) {
+                                if(task.isSuccessful()) {
+                                    Toast.makeText(getActivity(), "Added Successfully", Toast.LENGTH_SHORT).show();
+                                } else {
+                                    Toast.makeText(getActivity(), task.getException().getMessage(), Toast.LENGTH_SHORT).show();
+                                }
+                            }
+                        });
 
 
                     }
                 });
-                mBinding.textViewProductName.setText(product.getName());
-                mBinding.textViewProductPrice.setText("$" + product.getPrice());
-                Picasso.get().load(product.getImg_url()).into(mBinding.imageViewProductIcon);
+
             }
         }
     }
